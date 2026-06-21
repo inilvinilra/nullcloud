@@ -1,0 +1,7 @@
+historical_dns:
+  securitytrails: YOUR_SECURITYTRAILS_API_KEY
+shodan:
+  api_key: YOUR_SHODAN_API_KEY
+censys:
+  api_id: YOUR_CENSYS_API_ID
+  api_secret: YOUR_CENSYS_API_SECRET

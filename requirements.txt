@@ -1,0 +1,5 @@
+dnspython>=2.4.0
+pyyaml>=6.0
+tqdm>=4.65.0
+mmh3>=4.0.0
+beautifulsoup4>=4.12.0

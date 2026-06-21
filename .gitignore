@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.DS_Store
+*.log
+keys.yaml
+*.json
+*.csv
+*.md.tmp
+/tmp/
