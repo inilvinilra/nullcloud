@@ -3,6 +3,10 @@ from .asnsweep import AsnSweepRecon
 from .cloudstorage import CloudStorageRecon
 from .bodyfingerprint import BodyFingerprintRecon
 from .fofa import FofaRecon
+from .shodan import ShodanRecon
+from .censys import CensysRecon
+from .netlas import NetlasRecon
+from .criminalip import CriminalIpRecon
 
 __all__ = [
     "BaseRecon",
@@ -11,6 +15,10 @@ __all__ = [
     "CloudStorageRecon",
     "BodyFingerprintRecon",
     "FofaRecon",
+    "ShodanRecon",
+    "CensysRecon",
+    "NetlasRecon",
+    "CriminalIpRecon",
     "run_modules",
 ]
 
@@ -19,6 +27,10 @@ REGISTRY = {
     "cloud": CloudStorageRecon,
     "body": BodyFingerprintRecon,
     "fofa": FofaRecon,
+    "shodan": ShodanRecon,
+    "censys": CensysRecon,
+    "netlas": NetlasRecon,
+    "criminalip": CriminalIpRecon,
 }
 
 

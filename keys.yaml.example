@@ -8,3 +8,7 @@ censys:
 fofa:
   email: YOUR_FOFA_EMAIL
   key: YOUR_FOFA_API_KEY
+netlas:
+  api_key: YOUR_NETLAS_API_KEY
+criminalip:
+  api_key: YOUR_CRIMINALIP_API_KEY
