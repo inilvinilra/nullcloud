@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-07-02
+
+### Added
+- Shodan, Censys, Netlas and Criminal IP API integrations via `recon/shodan.py`, `recon/censys.py`, `recon/netlas.py` and `recon/criminalip.py`.
+- Automatic API-key passive reconnaissance: configured services run automatically during `--origin`.
+- `--origin-no-api` CLI flag to disable all API-key passive reconnaissance services.
+- New active recon modules: `shodan`, `censys`, `netlas`, `criminalip`.
+- Shodan, Censys, Netlas and Criminal IP credentials in `keys.yaml.example`.
+- Pytest tests for all new recon modules.
+- Thanks section entries for Shodan, Censys, Netlas and Criminal IP.
+
 ## [1.0.0] - 2026-07-02
 
 ### Added

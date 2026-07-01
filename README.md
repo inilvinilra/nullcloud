@@ -9,7 +9,7 @@ A fast, multi-threaded command-line tool to discover real IP addresses hiding be
 - Supports Cloudflare, Fastly, AWS CloudFront, Google Cloud, Gcore, Akamai, Azure, BunnyCDN, Imperva, Sucuri, DDoS-Guard, Qrator, StormWall, Yandex Cloud, Tencent Cloud, Alibaba Cloud, Huawei Cloud, CDN77, KeyCDN, CDNetworks and Wangsu
 - Live IP range fetching for Cloudflare, Fastly, AWS CloudFront, Google Cloud, Gcore, BunnyCDN and Azure
 - Passive origin detection via CNAME chain analysis, multiple certificate transparency sources (crt.sh, CertSpotter), passive subdomain databases (HackerTarget, RapidDNS, DNSDumpster), HTTP header inspection, favicon hash extraction, MX/TXT/PTR analysis and DNS zone transfer (AXFR) attempts
-- Modular active origin reconnaissance: ASN/range discovery with Host/SNI sweep and response fingerprinting (keyless), cloud storage enumeration, and pluggable API-key modules (FOFA, historical DNS, Shodan, Censys)
+- Modular active origin reconnaissance: ASN/range discovery with Host/SNI sweep and response fingerprinting (keyless), cloud storage enumeration, and pluggable API-key modules (FOFA, Shodan, Censys, Netlas, Criminal IP, historical DNS)
 - Service-aware output: know which provider protects each IP
 - Multiple wordlist support
 - Multi-threaded scanning
@@ -94,7 +94,7 @@ Run only a specific active module:
 python3 nullcloud.py example.com -s cloudflare --origin --origin-active --origin-module asn
 ```
 
-Use FOFA for passive origin reconnaissance (requires a FOFA API key in `~/.nullcloud/keys.yaml`):
+Use API-key passive reconnaissance services (FOFA, Shodan, Censys, Netlas, Criminal IP) by adding keys to `~/.nullcloud/keys.yaml`:
 
 ```bash
 python3 nullcloud.py example.com --origin
@@ -104,7 +104,13 @@ Create `~/.nullcloud/keys.yaml` from the provided example:
 
 ```bash
 cp keys.yaml.example ~/.nullcloud/keys.yaml
-# edit ~/.nullcloud/keys.yaml and add your FOFA email + key
+# edit ~/.nullcloud/keys.yaml and add your API keys
+```
+
+Disable all API-key services and run only free passive sources:
+
+```bash
+python3 nullcloud.py example.com --origin --origin-no-api
 ```
 
 Generate a human-readable Markdown report:
@@ -147,11 +153,12 @@ Contributions are welcome. Please open an issue or pull request on GitHub.
 | `--origin` | Enable CNAME/CT log/header origin detection |
 | `--origin-timeout` | Timeout for origin probes (default: 10) |
 | `--origin-active` | Enable active origin reconnaissance modules |
-| `--origin-module` | Active module to run: `asn`, `cloud`, `body`, `fofa` (repeatable, default: `asn`, `cloud`, `body`) |
+| `--origin-module` | Active module to run: `asn`, `cloud`, `body`, `fofa`, `shodan`, `censys`, `netlas`, `criminalip` (repeatable, default: `asn`, `cloud`, `body`) |
 | `--origin-active-threads` | Active recon threads (default: 20) |
 | `--origin-active-timeout` | Active probe timeout in seconds (default: 5) |
 | `--origin-sample` | Sample one IP per discovered prefix instead of full sweep |
 | `--origin-use-fofa` | Enable FOFA passive reconnaissance when API keys are configured |
+| `--origin-no-api` | Disable all API-key passive reconnaissance services |
 | `--origin-key-file` | Path to API key file (default: `~/.nullcloud/keys.yaml`) |
 | `--report-format` | Generate human-readable report: `txt`, `md`, `html` |
 | `--report-output` | Report output file (default: stdout) |
@@ -160,7 +167,7 @@ Contributions are welcome. Please open an issue or pull request on GitHub.
 
 Normal output shows real IPs and protected IPs grouped by provider.
 
-JSON and YAML include the full result structure with `results` (containing `ips` and `protected` arrays) and, when `--origin` is used, an `origins` object with `cname_chain`, `backend`, `header_leaks`, `ct_subdomains`, `certspotter_subdomains`, `hackertarget_pairs`, `rapiddns_pairs`, `dnsdumpster_pairs`, `external_subdomains`, `favicon_hash`, `axfr_subdomains`, `mx_hosts`, `txt_records`, `ptr_hints`, `origin_ips`, `origin_ranges` and active module results such as `asnsweep`, `bodyfingerprint` and `cloudstorage`.
+JSON and YAML include the full result structure with `results` (containing `ips` and `protected` arrays) and, when `--origin` is used, an `origins` object with `cname_chain`, `backend`, `header_leaks`, `ct_subdomains`, `certspotter_subdomains`, `hackertarget_pairs`, `rapiddns_pairs`, `dnsdumpster_pairs`, `fofa_pairs`, `shodan_pairs`, `censys_pairs`, `netlas_pairs`, `criminalip_pairs`, `external_subdomains`, `favicon_hash`, `axfr_subdomains`, `mx_hosts`, `txt_records`, `ptr_hints`, `origin_ips`, `origin_ranges` and active module results such as `asnsweep`, `bodyfingerprint` and `cloudstorage`.
 
 Human-readable reports (`--report-format`) add a risk summary and severity columns to each origin candidate, header leak and cloud storage finding. Severity levels are `critical`, `high`, `medium`, `low` and `info`.
 
@@ -181,6 +188,10 @@ Do not use NullCloud on systems you do not own or have explicit written permissi
 ## Thanks
 
 - [FOFA](https://fofa.info/) for supporting open-source security research.
+- [Shodan](https://www.shodan.io/) for internet-wide asset discovery.
+- [Censys](https://search.censys.io/) for internet intelligence data.
+- [Netlas](https://netlas.io/) for attack surface discovery.
+- [Criminal IP](https://www.criminalip.io/) for threat intelligence and asset search.
 
 ## License
 
