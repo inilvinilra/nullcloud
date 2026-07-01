@@ -9,7 +9,7 @@ A fast, multi-threaded command-line tool to discover real IP addresses hiding be
 - Supports Cloudflare, Fastly, AWS CloudFront, Google Cloud, Gcore, Akamai, Azure, BunnyCDN, Imperva, Sucuri, DDoS-Guard, Qrator, StormWall, Yandex Cloud, Tencent Cloud, Alibaba Cloud, Huawei Cloud, CDN77, KeyCDN, CDNetworks and Wangsu
 - Live IP range fetching for Cloudflare, Fastly, AWS CloudFront, Google Cloud, Gcore, BunnyCDN and Azure
 - Passive origin detection via CNAME chain analysis, multiple certificate transparency sources (crt.sh, CertSpotter), passive subdomain databases (HackerTarget, RapidDNS, DNSDumpster), HTTP header inspection, favicon hash extraction, MX/TXT/PTR analysis and DNS zone transfer (AXFR) attempts
-- Modular active origin reconnaissance: ASN/range discovery with Host/SNI sweep and response fingerprinting (keyless), cloud storage enumeration, and pluggable API-key modules (historical DNS, Shodan, Censys)
+- Modular active origin reconnaissance: ASN/range discovery with Host/SNI sweep and response fingerprinting (keyless), cloud storage enumeration, and pluggable API-key modules (FOFA, historical DNS, Shodan, Censys)
 - Service-aware output: know which provider protects each IP
 - Multiple wordlist support
 - Multi-threaded scanning
@@ -94,6 +94,19 @@ Run only a specific active module:
 python3 nullcloud.py example.com -s cloudflare --origin --origin-active --origin-module asn
 ```
 
+Use FOFA for passive origin reconnaissance (requires a FOFA API key in `~/.nullcloud/keys.yaml`):
+
+```bash
+python3 nullcloud.py example.com --origin
+```
+
+Create `~/.nullcloud/keys.yaml` from the provided example:
+
+```bash
+cp keys.yaml.example ~/.nullcloud/keys.yaml
+# edit ~/.nullcloud/keys.yaml and add your FOFA email + key
+```
+
 Generate a human-readable Markdown report:
 
 ```bash
@@ -101,6 +114,21 @@ python3 nullcloud.py example.com --origin --report-format md --report-output rep
 ```
 
 Available report formats: `txt`, `md`, `html`.
+
+## Development
+
+Install development dependencies and run the test suite:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+pytest -v
+```
+
+## Contributing
+
+Contributions are welcome. Please open an issue or pull request on GitHub.
 
 ## Options
 
@@ -119,10 +147,11 @@ Available report formats: `txt`, `md`, `html`.
 | `--origin` | Enable CNAME/CT log/header origin detection |
 | `--origin-timeout` | Timeout for origin probes (default: 10) |
 | `--origin-active` | Enable active origin reconnaissance modules |
-| `--origin-module` | Active module to run: `asn`, `cloud`, `body` (repeatable, default: `asn`, `cloud`, `body`) |
+| `--origin-module` | Active module to run: `asn`, `cloud`, `body`, `fofa` (repeatable, default: `asn`, `cloud`, `body`) |
 | `--origin-active-threads` | Active recon threads (default: 20) |
 | `--origin-active-timeout` | Active probe timeout in seconds (default: 5) |
-| `--origin-sample` | Sample one IP per prefix instead of full sweep |
+| `--origin-sample` | Sample one IP per discovered prefix instead of full sweep |
+| `--origin-use-fofa` | Enable FOFA passive reconnaissance when API keys are configured |
 | `--origin-key-file` | Path to API key file (default: `~/.nullcloud/keys.yaml`) |
 | `--report-format` | Generate human-readable report: `txt`, `md`, `html` |
 | `--report-output` | Report output file (default: stdout) |
@@ -148,6 +177,10 @@ A provider not detecting its own corporate homepage is usually expected: marketi
 This tool is intended for authorized security testing, bug bounty programs and educational purposes only.
 
 Do not use NullCloud on systems you do not own or have explicit written permission to test. Unauthorized scanning may violate laws in your jurisdiction. The authors assume no liability for misuse.
+
+## Thanks
+
+- [FOFA](https://fofa.info/) for supporting open-source security research.
 
 ## License
 
