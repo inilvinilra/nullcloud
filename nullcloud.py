@@ -49,10 +49,18 @@ except Exception:
 try:
     import recon
     from recon.fofa import fetch_fofa
+    from recon.shodan import fetch_shodan
+    from recon.censys import fetch_censys
+    from recon.netlas import fetch_netlas
+    from recon.criminalip import fetch_criminalip
     HAVE_RECON = True
 except Exception:
     HAVE_RECON = False
     fetch_fofa = None
+    fetch_shodan = None
+    fetch_censys = None
+    fetch_netlas = None
+    fetch_criminalip = None
 
 try:
     import reporting
@@ -4970,7 +4978,7 @@ def attempt_axfr(domain: str, timeout: int = 10) -> list[str]:
     return found
 
 
-def find_origins(domain: str, network_map: list, timeout: int = 10, keys: Optional[dict] = None, use_fofa: bool = False) -> dict:
+def find_origins(domain: str, network_map: list, timeout: int = 10, keys: Optional[dict] = None, use_api: bool = True) -> dict:
     origins = {
         "domain": domain,
         "cname_chain": [],
@@ -4981,6 +4989,10 @@ def find_origins(domain: str, network_map: list, timeout: int = 10, keys: Option
         "rapiddns_pairs": [],
         "dnsdumpster_pairs": [],
         "fofa_pairs": [],
+        "shodan_pairs": [],
+        "censys_pairs": [],
+        "netlas_pairs": [],
+        "criminalip_pairs": [],
         "external_subdomains": [],
         "favicon_hash": {},
         "header_leaks": [],
@@ -5012,32 +5024,93 @@ def find_origins(domain: str, network_map: list, timeout: int = 10, keys: Option
     origins["txt_records"] = resolve_records(domain, "TXT")
     mx_records = resolve_records(domain, "MX")
     origins["mx_hosts"] = mx_records
-    fofa_subs = set()
-    fofa_ips = set()
-    if use_fofa and fetch_fofa and keys:
-        fofa_keys = keys.get("fofa", {})
-        email = fofa_keys.get("email")
-        key = fofa_keys.get("key")
-        if email and key:
-            try:
-                fofa_subs, fofa_ips, fofa_pairs = fetch_fofa(
-                    domain=domain,
-                    email=email,
-                    key=key,
-                    max_size=1000,
-                    timeout=timeout,
-                )
-                origins["fofa_pairs"] = sorted(fofa_pairs, key=lambda x: (x["subdomain"], x["ip"]))
-            except Exception:
-                fofa_subs = set()
-                fofa_ips = set()
+    api_subs = set()
+    api_ips = set()
+
+    def _add_api_pairs(name, subs, ips, pairs):
+        origins[f"{name}_pairs"] = sorted(pairs, key=lambda x: (x["subdomain"], x["ip"]))
+        api_subs.update(subs)
+        api_ips.update(ips)
+
+    if use_api and keys:
+        if fetch_fofa:
+            fofa_keys = keys.get("fofa", {})
+            email = fofa_keys.get("email")
+            key = fofa_keys.get("key")
+            if email and key:
+                try:
+                    fofa_subs, fofa_ips, fofa_pairs = fetch_fofa(
+                        domain=domain,
+                        email=email,
+                        key=key,
+                        max_size=1000,
+                        timeout=timeout,
+                    )
+                    _add_api_pairs("fofa", fofa_subs, fofa_ips, fofa_pairs)
+                except Exception:
+                    pass
+        if fetch_shodan:
+            shodan_key = keys.get("shodan", {}).get("api_key")
+            if shodan_key:
+                try:
+                    shodan_subs, shodan_ips, shodan_pairs = fetch_shodan(
+                        domain=domain,
+                        api_key=shodan_key,
+                        max_pages=10,
+                        timeout=timeout,
+                    )
+                    _add_api_pairs("shodan", shodan_subs, shodan_ips, shodan_pairs)
+                except Exception:
+                    pass
+        if fetch_censys:
+            censys_keys = keys.get("censys", {})
+            censys_id = censys_keys.get("api_id")
+            censys_secret = censys_keys.get("api_secret")
+            if censys_id and censys_secret:
+                try:
+                    censys_subs, censys_ips, censys_pairs = fetch_censys(
+                        domain=domain,
+                        api_id=censys_id,
+                        api_secret=censys_secret,
+                        max_pages=10,
+                        timeout=timeout,
+                    )
+                    _add_api_pairs("censys", censys_subs, censys_ips, censys_pairs)
+                except Exception:
+                    pass
+        if fetch_netlas:
+            netlas_key = keys.get("netlas", {}).get("api_key")
+            if netlas_key:
+                try:
+                    netlas_subs, netlas_ips, netlas_pairs = fetch_netlas(
+                        domain=domain,
+                        api_key=netlas_key,
+                        max_results=200,
+                        timeout=timeout,
+                    )
+                    _add_api_pairs("netlas", netlas_subs, netlas_ips, netlas_pairs)
+                except Exception:
+                    pass
+        if fetch_criminalip:
+            criminalip_key = keys.get("criminalip", {}).get("api_key")
+            if criminalip_key:
+                try:
+                    criminalip_subs, criminalip_ips, criminalip_pairs = fetch_criminalip(
+                        domain=domain,
+                        api_key=criminalip_key,
+                        max_offsets=10,
+                        timeout=timeout,
+                    )
+                    _add_api_pairs("criminalip", criminalip_subs, criminalip_ips, criminalip_pairs)
+                except Exception:
+                    pass
     external_subs = set(ct_subs)
     external_subs.update(certspotter_subs)
     external_subs.update(axfr_subs)
     external_subs.update(s for s, _ in hackertarget_pairs)
     external_subs.update(s for s, _ in rapiddns_pairs)
     external_subs.update(s for s, _ in dnsdumpster_pairs)
-    external_subs.update(fofa_subs)
+    external_subs.update(api_subs)
     origins["external_subdomains"] = sorted(external_subs)
     candidates = set(external_subs)
     candidates.add(domain)
@@ -5050,7 +5123,7 @@ def find_origins(domain: str, network_map: list, timeout: int = 10, keys: Option
     known_ips = {i for _, i in hackertarget_pairs if is_valid_ip(i)}
     known_ips.update(i for _, i in rapiddns_pairs if is_valid_ip(i))
     known_ips.update(i for _, i in dnsdumpster_pairs if is_valid_ip(i))
-    known_ips.update(i for i in fofa_ips if is_valid_ip(i))
+    known_ips.update(i for i in api_ips if is_valid_ip(i))
     resolved = []
     for sub in candidates:
         for record_type in ("A", "AAAA"):
@@ -5177,6 +5250,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--origin-active-timeout", type=int, default=5, help="Active probe timeout (default: 5)")
     parser.add_argument("--origin-sample", action="store_true", help="Sample one IP per discovered prefix instead of full sweep")
     parser.add_argument("--origin-use-fofa", action="store_true", help="Enable FOFA passive reconnaissance when API keys are configured")
+    parser.add_argument("--origin-no-api", action="store_true", help="Disable all API-key passive reconnaissance services (FOFA, Shodan, Censys, Netlas, Criminal IP)")
     parser.add_argument("--origin-key-file", type=str, default=None, help="API key file (default: ~/.nullcloud/keys.yaml)")
     parser.add_argument("--report-format", type=str, choices=["txt", "md", "html"], default=None, help="Generate human-readable report")
     parser.add_argument("--report-output", type=str, default=None, help="Report output file (default: stdout)")
@@ -5222,7 +5296,7 @@ def print_normal(results: list[dict], quiet: bool, verbose: bool, origins: Optio
             for leak in origins["header_leaks"]:
                 ip = leak.get("ip") or "n/a"
                 print(f"[header] {leak['header']}: {ip} ({leak['raw'][:80]})")
-        for key in ("hackertarget_pairs", "rapiddns_pairs", "dnsdumpster_pairs", "fofa_pairs"):
+        for key in ("hackertarget_pairs", "rapiddns_pairs", "dnsdumpster_pairs", "fofa_pairs", "shodan_pairs", "censys_pairs", "netlas_pairs", "criminalip_pairs"):
             if origins[key]:
                 print(f"\n[*] {key} ({len(origins[key])} entries)")
                 for entry in origins[key][:20]:
@@ -5365,9 +5439,8 @@ def main() -> None:
     if args.origin:
         if not args.quiet and args.format == "normal":
             print("\n[*] Running origin detection...")
-        fofa_keys = keys.get("fofa", {})
-        use_fofa = args.origin_use_fofa or bool(fofa_keys.get("email") and fofa_keys.get("key"))
-        origins = find_origins(domain, network_map, args.origin_timeout, keys=keys, use_fofa=use_fofa)
+        use_api = not args.origin_no_api
+        origins = find_origins(domain, network_map, args.origin_timeout, keys=keys, use_api=use_api)
         if origins.get("origin_ips"):
             real_count += len(origins["origin_ips"])
         if args.origin_active and HAVE_RECON:

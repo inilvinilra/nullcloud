@@ -172,7 +172,7 @@ def _generate_txt(results, origins):
 
     lines.append("## External Subdomain Sources")
     lines.append("-" * 80)
-    for key in ("hackertarget_pairs", "rapiddns_pairs", "dnsdumpster_pairs", "fofa_pairs"):
+    for key in ("hackertarget_pairs", "rapiddns_pairs", "dnsdumpster_pairs", "fofa_pairs", "shodan_pairs", "censys_pairs", "netlas_pairs", "criminalip_pairs"):
         items = origins.get(key, [])
         if items:
             lines.append(f"[{key}] ({len(items)} entries)")
