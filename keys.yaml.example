@@ -5,3 +5,6 @@ shodan:
 censys:
   api_id: YOUR_CENSYS_API_ID
   api_secret: YOUR_CENSYS_API_SECRET
+fofa:
+  email: YOUR_FOFA_EMAIL
+  key: YOUR_FOFA_API_KEY

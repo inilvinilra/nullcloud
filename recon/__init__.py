@@ -2,6 +2,7 @@ from .base import BaseRecon, ReconResult
 from .asnsweep import AsnSweepRecon
 from .cloudstorage import CloudStorageRecon
 from .bodyfingerprint import BodyFingerprintRecon
+from .fofa import FofaRecon
 
 __all__ = [
     "BaseRecon",
@@ -9,6 +10,7 @@ __all__ = [
     "AsnSweepRecon",
     "CloudStorageRecon",
     "BodyFingerprintRecon",
+    "FofaRecon",
     "run_modules",
 ]
 
@@ -16,6 +18,7 @@ REGISTRY = {
     "asn": AsnSweepRecon,
     "cloud": CloudStorageRecon,
     "body": BodyFingerprintRecon,
+    "fofa": FofaRecon,
 }
 
 

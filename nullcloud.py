@@ -48,9 +48,11 @@ except Exception:
 
 try:
     import recon
+    from recon.fofa import fetch_fofa
     HAVE_RECON = True
 except Exception:
     HAVE_RECON = False
+    fetch_fofa = None
 
 try:
     import reporting
@@ -4968,7 +4970,7 @@ def attempt_axfr(domain: str, timeout: int = 10) -> list[str]:
     return found
 
 
-def find_origins(domain: str, network_map: list, timeout: int = 10) -> dict:
+def find_origins(domain: str, network_map: list, timeout: int = 10, keys: Optional[dict] = None, use_fofa: bool = False) -> dict:
     origins = {
         "domain": domain,
         "cname_chain": [],
@@ -4978,6 +4980,7 @@ def find_origins(domain: str, network_map: list, timeout: int = 10) -> dict:
         "hackertarget_pairs": [],
         "rapiddns_pairs": [],
         "dnsdumpster_pairs": [],
+        "fofa_pairs": [],
         "external_subdomains": [],
         "favicon_hash": {},
         "header_leaks": [],
@@ -5009,12 +5012,32 @@ def find_origins(domain: str, network_map: list, timeout: int = 10) -> dict:
     origins["txt_records"] = resolve_records(domain, "TXT")
     mx_records = resolve_records(domain, "MX")
     origins["mx_hosts"] = mx_records
+    fofa_subs = set()
+    fofa_ips = set()
+    if use_fofa and fetch_fofa and keys:
+        fofa_keys = keys.get("fofa", {})
+        email = fofa_keys.get("email")
+        key = fofa_keys.get("key")
+        if email and key:
+            try:
+                fofa_subs, fofa_ips, fofa_pairs = fetch_fofa(
+                    domain=domain,
+                    email=email,
+                    key=key,
+                    max_size=1000,
+                    timeout=timeout,
+                )
+                origins["fofa_pairs"] = sorted(fofa_pairs, key=lambda x: (x["subdomain"], x["ip"]))
+            except Exception:
+                fofa_subs = set()
+                fofa_ips = set()
     external_subs = set(ct_subs)
     external_subs.update(certspotter_subs)
     external_subs.update(axfr_subs)
     external_subs.update(s for s, _ in hackertarget_pairs)
     external_subs.update(s for s, _ in rapiddns_pairs)
     external_subs.update(s for s, _ in dnsdumpster_pairs)
+    external_subs.update(fofa_subs)
     origins["external_subdomains"] = sorted(external_subs)
     candidates = set(external_subs)
     candidates.add(domain)
@@ -5027,6 +5050,7 @@ def find_origins(domain: str, network_map: list, timeout: int = 10) -> dict:
     known_ips = {i for _, i in hackertarget_pairs if is_valid_ip(i)}
     known_ips.update(i for _, i in rapiddns_pairs if is_valid_ip(i))
     known_ips.update(i for _, i in dnsdumpster_pairs if is_valid_ip(i))
+    known_ips.update(i for i in fofa_ips if is_valid_ip(i))
     resolved = []
     for sub in candidates:
         for record_type in ("A", "AAAA"):
@@ -5148,10 +5172,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--origin", action="store_true", help="Enable enhanced origin detection (CNAME, CT logs, headers)")
     parser.add_argument("--origin-timeout", type=int, default=10, help="Timeout for origin detection probes (default: 10)")
     parser.add_argument("--origin-active", action="store_true", help="Enable active origin reconnaissance modules")
-    parser.add_argument("--origin-module", action="append", default=None, help="Active recon module to run (default: asn)")
+    parser.add_argument("--origin-module", action="append", default=None, help="Active recon module to run (default: asn, cloud, body)")
     parser.add_argument("--origin-active-threads", type=int, default=20, help="Active recon threads (default: 20)")
     parser.add_argument("--origin-active-timeout", type=int, default=5, help="Active probe timeout (default: 5)")
-    parser.add_argument("--origin-sample", action="store_true", help="Sample IPs in each /24 instead of full sweep")
+    parser.add_argument("--origin-sample", action="store_true", help="Sample one IP per discovered prefix instead of full sweep")
+    parser.add_argument("--origin-use-fofa", action="store_true", help="Enable FOFA passive reconnaissance when API keys are configured")
     parser.add_argument("--origin-key-file", type=str, default=None, help="API key file (default: ~/.nullcloud/keys.yaml)")
     parser.add_argument("--report-format", type=str, choices=["txt", "md", "html"], default=None, help="Generate human-readable report")
     parser.add_argument("--report-output", type=str, default=None, help="Report output file (default: stdout)")
@@ -5197,7 +5222,7 @@ def print_normal(results: list[dict], quiet: bool, verbose: bool, origins: Optio
             for leak in origins["header_leaks"]:
                 ip = leak.get("ip") or "n/a"
                 print(f"[header] {leak['header']}: {ip} ({leak['raw'][:80]})")
-        for key in ("hackertarget_pairs", "rapiddns_pairs", "dnsdumpster_pairs"):
+        for key in ("hackertarget_pairs", "rapiddns_pairs", "dnsdumpster_pairs", "fofa_pairs"):
             if origins[key]:
                 print(f"\n[*] {key} ({len(origins[key])} entries)")
                 for entry in origins[key][:20]:
@@ -5332,18 +5357,23 @@ def main() -> None:
                 iterator.set_postfix(real=real_count, protected=protected_count)
     results.sort(key=lambda x: x["subdomain"])
     origins = None
+    keys = {}
+    if args.origin or args.origin_active:
+        key_path = args.origin_key_file or os.path.expanduser("~/.nullcloud/keys.yaml")
+        keys = load_keys(key_path)
+
     if args.origin:
         if not args.quiet and args.format == "normal":
             print("\n[*] Running origin detection...")
-        origins = find_origins(domain, network_map, args.origin_timeout)
+        fofa_keys = keys.get("fofa", {})
+        use_fofa = args.origin_use_fofa or bool(fofa_keys.get("email") and fofa_keys.get("key"))
+        origins = find_origins(domain, network_map, args.origin_timeout, keys=keys, use_fofa=use_fofa)
         if origins.get("origin_ips"):
             real_count += len(origins["origin_ips"])
         if args.origin_active and HAVE_RECON:
             if not args.quiet and args.format == "normal":
                 print("[*] Running active origin reconnaissance...")
             modules = args.origin_module or ["asn", "cloud", "body"]
-            key_path = args.origin_key_file or os.path.expanduser("~/.nullcloud/keys.yaml")
-            keys = load_keys(key_path)
             seed_ips = [entry["ip"] for entry in origins.get("origin_ips", [])]
             config = {
                 "timeout": args.origin_timeout,
