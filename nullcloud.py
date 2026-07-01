@@ -1,6 +1,8 @@
 import argparse
+import base64
 import csv
 import datetime
+import hashlib
 import io
 import ipaddress
 import json
