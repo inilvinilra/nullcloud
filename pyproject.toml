@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nullcloud"
+version = "1.0.0"
+description = "Discover real IP addresses hiding behind CDN, WAF and DDoS protection services."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "NullCloud contributors"},
+]
+keywords = ["security", "reconnaissance", "cdn", "waf", "osint", "fofa"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "dnspython>=2.4.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.65.0",
+    "mmh3>=4.0.0",
+    "beautifulsoup4>=4.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-mock>=3.11.0",
+]
+
+[project.scripts]
+nullcloud = "nullcloud:main"
+
+[project.urls]
+Homepage = "https://github.com/inilvinilra/nullcloud"
+Repository = "https://github.com/inilvinilra/nullcloud"
+Issues = "https://github.com/inilvinilra/nullcloud/issues"
+
+[tool.setuptools]
+py-modules = ["nullcloud", "reporting", "risk"]
+packages = ["recon"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"*" = ["wordlist.txt", "keys.yaml.example"]
