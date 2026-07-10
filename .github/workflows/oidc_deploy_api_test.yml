@@ -1,4 +1,4 @@
-name: OIDC Deploy API Test v2
+name: OIDC Internal Services Test
 on:
   workflow_dispatch:
 
@@ -10,38 +10,54 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Test OIDC + deploy-api
+      - name: Test OIDC + internal ang services
         run: |
-          # Get OIDC token
-          RESP=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange")
+          # Get OIDC token with github audience
+          RESP=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https://github.com")
           TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
-          echo "Token obtained (length): ${#TOKEN}"
+          echo "Token length: ${#TOKEN}"
           
           # Decode claims
           PAYLOAD=$(echo "$TOKEN" | cut -d. -f2)
-          PAD=$((4 - ${#PAYLOAD} % 4))
-          [ $PAD -ne 4 ] && PAYLOAD="${PAYLOAD}$(printf '=%.0s' $(seq 1 $PAD))"
-          echo "Claims:"
-          echo "$PAYLOAD" | base64 -d | python3 -m json.tool
+          PADDED="$PAYLOAD=="
+          echo "Claims:" 
+          echo "$PADDED" | base64 -d 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "$PADDED" | base64 -d 2>/dev/null
           
-          # Test deploy-api-ang
-          echo ""
-          echo "=== deploy-api-ang.githubapp.com ==="
-          curl -sk -o /dev/null -w "Status: %{http_code}\n" -H "Authorization: Bearer $TOKEN" "https://deploy-api-ang.githubapp.com/"
-          curl -sk -w "\nBody: %{response_code}\n" -H "Authorization: Bearer $TOKEN" "https://deploy-api-ang.githubapp.com/" 2>&1 | head -5
+          # Test function
+          test_endpoint() {
+            local HOST=$1
+            local PATH=${2:-"/"}
+            echo ""
+            echo "=== $HOST$PATH ==="
+            # Test with oidc token
+            HTTP=$(curl -sk -o /tmp/body.txt -w "%{http_code}" -H "Authorization: Bearer $TOKEN" "https://$HOST$PATH")
+            echo "OIDC Bearer: HTTP $HTTP"
+            head -c 500 /tmp/body.txt
+            echo ""
+            
+            # Test with X-Forwarded-Host
+            HTTP2=$(curl -sk -o /tmp/body2.txt -w "%{http_code}" -H "X-Forwarded-Host: $HOST" "https://$HOST$PATH")
+            echo "X-Forwarded-Host: HTTP $HTTP2"
+            head -c 200 /tmp/body2.txt
+          }
+          
+          # Internal -ang services
+          test_endpoint "skeefree-production-ang.githubapp.com" "/"
+          test_endpoint "skeefree-production-ang.githubapp.com" "/health"
+          test_endpoint "skeefree-production-ang.githubapp.com" "/api/v1/services"
+          test_endpoint "skeefree-production-ang.githubapp.com" "/api/v1/teams"
+          test_endpoint "vulnerability-aggregator-production-ang.githubapp.com" "/"
+          test_endpoint "vulnerability-aggregator-production-ang.githubapp.com" "/api/v1/vulnerabilities"
+          test_endpoint "ospo-policy-service-production-ang.githubapp.com" "/"
+          test_endpoint "ospo-policy-service-production-ang.githubapp.com" "/api/v1/policies"
+          test_endpoint "codeql-bazel-cache-production-ang.githubapp.com" "/"
+          test_endpoint "codeql-bazel-cache-production-ang.githubapp.com" "/cache/ac/sha256/"
           
           echo ""
-          echo "=== deploy-api-ash1.githubapp.com ==="
-          curl -sk -o /dev/null -w "Status: %{http_code}\n" -H "Authorization: Bearer $TOKEN" "https://deploy-api-ash1.githubapp.com/"
+          echo "=== Also testing with default audience ==="
+          RESP2=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}")
+          TOKEN2=$(echo "$RESP2" | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
           
-          echo ""
-          echo "=== heaven.githubapp.com ==="
-          curl -sk -o /dev/null -w "Status: %{http_code}\n" -H "Authorization: Bearer $TOKEN" "https://heaven.githubapp.com/"
-          
-          echo ""
-          echo "=== ops.githubapp.com ==="
-          curl -sk -o /dev/null -w "Status: %{http_code}\n" -H "Authorization: Bearer $TOKEN" "https://ops.githubapp.com/"
-          
-          echo ""
-          echo "=== janky.githubapp.com ==="
-          curl -sk -o /dev/null -w "Status: %{http_code}\n" -H "Authorization: Bearer $TOKEN" "https://janky.githubapp.com/"
+          HTTP=$(curl -sk -o /tmp/b.txt -w "%{http_code}" -H "Authorization: Bearer $TOKEN2" "https://skeefree-production-ang.githubapp.com/")
+          echo "skeefree default-audience: HTTP $HTTP"
+          head -c 300 /tmp/b.txt
