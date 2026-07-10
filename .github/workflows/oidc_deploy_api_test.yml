@@ -12,52 +12,56 @@ jobs:
     steps:
       - name: Test OIDC + internal ang services
         run: |
-          # Get OIDC token with github audience
-          RESP=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https://github.com")
-          TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
-          echo "Token length: ${#TOKEN}"
+          python3 - << 'PYEOF'
+          import urllib.request, urllib.parse, json, os, ssl
           
-          # Decode claims
-          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2)
-          PADDED="$PAYLOAD=="
-          echo "Claims:" 
-          echo "$PADDED" | base64 -d 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "$PADDED" | base64 -d 2>/dev/null
+          ctx = ssl.create_default_context()
           
-          # Test function
-          test_endpoint() {
-            local HOST=$1
-            local PATH=${2:-"/"}
-            echo ""
-            echo "=== $HOST$PATH ==="
-            # Test with oidc token
-            HTTP=$(curl -sk -o /tmp/body.txt -w "%{http_code}" -H "Authorization: Bearer $TOKEN" "https://$HOST$PATH")
-            echo "OIDC Bearer: HTTP $HTTP"
-            head -c 500 /tmp/body.txt
-            echo ""
-            
-            # Test with X-Forwarded-Host
-            HTTP2=$(curl -sk -o /tmp/body2.txt -w "%{http_code}" -H "X-Forwarded-Host: $HOST" "https://$HOST$PATH")
-            echo "X-Forwarded-Host: HTTP $HTTP2"
-            head -c 200 /tmp/body2.txt
-          }
+          def fetch(url, token=None, headers=None):
+              hdrs = {"Accept": "*/*"}
+              if token:
+                  hdrs["Authorization"] = f"Bearer {token}"
+              if headers:
+                  hdrs.update(headers)
+              req = urllib.request.Request(url, headers=hdrs)
+              try:
+                  with urllib.request.urlopen(req, context=ctx, timeout=10) as r:
+                      return r.status, r.read(2000).decode("utf-8", errors="replace"), dict(r.headers)
+              except Exception as e:
+                  return 0, str(e)[:200], {}
           
-          # Internal -ang services
-          test_endpoint "skeefree-production-ang.githubapp.com" "/"
-          test_endpoint "skeefree-production-ang.githubapp.com" "/health"
-          test_endpoint "skeefree-production-ang.githubapp.com" "/api/v1/services"
-          test_endpoint "skeefree-production-ang.githubapp.com" "/api/v1/teams"
-          test_endpoint "vulnerability-aggregator-production-ang.githubapp.com" "/"
-          test_endpoint "vulnerability-aggregator-production-ang.githubapp.com" "/api/v1/vulnerabilities"
-          test_endpoint "ospo-policy-service-production-ang.githubapp.com" "/"
-          test_endpoint "ospo-policy-service-production-ang.githubapp.com" "/api/v1/policies"
-          test_endpoint "codeql-bazel-cache-production-ang.githubapp.com" "/"
-          test_endpoint "codeql-bazel-cache-production-ang.githubapp.com" "/cache/ac/sha256/"
+          # Get OIDC token
+          oidc_url = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL", "")
+          oidc_req_token = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "")
           
-          echo ""
-          echo "=== Also testing with default audience ==="
-          RESP2=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}")
-          TOKEN2=$(echo "$RESP2" | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
+          r = urllib.request.Request(oidc_url + "&audience=https://github.com",
+              headers={"Authorization": f"bearer {oidc_req_token}"})
+          with urllib.request.urlopen(r, context=ctx, timeout=10) as resp:
+              oidc_data = json.loads(resp.read())
+          token = oidc_data["value"]
+          print(f"Token length: {len(token)}")
           
-          HTTP=$(curl -sk -o /tmp/b.txt -w "%{http_code}" -H "Authorization: Bearer $TOKEN2" "https://skeefree-production-ang.githubapp.com/")
-          echo "skeefree default-audience: HTTP $HTTP"
-          head -c 300 /tmp/b.txt
+          hosts = [
+              ("skeefree-production-ang.githubapp.com", "/"),
+              ("skeefree-production-ang.githubapp.com", "/health"),
+              ("skeefree-production-ang.githubapp.com", "/api/v1/services"),
+              ("skeefree-production-ang.githubapp.com", "/api/v1/teams"),
+              ("vulnerability-aggregator-production-ang.githubapp.com", "/"),
+              ("vulnerability-aggregator-production-ang.githubapp.com", "/api/v1/vulnerabilities"),
+              ("ospo-policy-service-production-ang.githubapp.com", "/"),
+              ("ospo-policy-service-production-ang.githubapp.com", "/api/v1/policies"),
+              ("codeql-bazel-cache-production-ang.githubapp.com", "/"),
+          ]
+          
+          for host, path in hosts:
+              print(f"\n=== {host}{path} ===")
+              # Test 1: with OIDC token
+              status, body, hdrs = fetch(f"https://{host}{path}", token=token)
+              print(f"  OIDC: HTTP {status}")
+              print(f"  Body: {body[:300]}")
+              # Test 2: No auth
+              status2, body2, hdrs2 = fetch(f"https://{host}{path}")
+              print(f"  NoAuth: HTTP {status2}")
+              print(f"  Body: {body2[:200]}")
+          
+          PYEOF
