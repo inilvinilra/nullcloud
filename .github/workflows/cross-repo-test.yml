@@ -1,0 +1,34 @@
+name: cross-repo-token-test
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Try to access private repo with GITHUB_TOKEN
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          echo "=== Testing GITHUB_TOKEN scope ==="
+          echo "Current repo: $GITHUB_REPOSITORY"
+          
+          # Try to access a private repo
+          RESULT=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            "https://api.github.com/repos/inilvinilra/tunos/contents/README.md")
+          echo "Access to inilvinilra/tunos: HTTP $RESULT"
+          
+          # Try to list private repos
+          RESULT2=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            "https://api.github.com/user/repos?type=private")
+          echo "List private repos: HTTP $RESULT2"
+          
+          # Try to read private repo via GraphQL
+          RESULT3=$(curl -s \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -X POST "https://api.github.com/graphql" \
+            -d '{"query":"{ viewer { login } repositories(first:5,privacy:PRIVATE) { totalCount nodes { name } } }"}')
+          echo "GraphQL private repos: $RESULT3"
