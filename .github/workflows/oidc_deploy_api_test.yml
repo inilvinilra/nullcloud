@@ -1,0 +1,68 @@
+name: OIDC Token Test for deploy-api
+on: [push]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  oidc-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get OIDC Token
+        id: get_token
+        run: |
+          OIDC_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" | \
+            python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
+          echo "token_length=${#OIDC_TOKEN}" >> $GITHUB_OUTPUT
+          echo "token_preview=${OIDC_TOKEN:0:50}" >> $GITHUB_OUTPUT
+          echo "full_token=$OIDC_TOKEN" >> $GITHUB_OUTPUT
+          
+      - name: Test deploy-api-ang with OIDC token
+        run: |
+          TOKEN="${{ steps.get_token.outputs.full_token }}"
+          
+          echo "=== Testing deploy-api-ang.githubapp.com ==="
+          
+          # Test with OIDC token as Bearer
+          RESULT=$(curl -sk -o /tmp/response.txt -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "User-Agent: GitHub-Actions/1.0" \
+            "https://deploy-api-ang.githubapp.com/")
+          echo "Status with OIDC Bearer: $RESULT"
+          echo "Response: $(cat /tmp/response.txt | head -c 300)"
+          
+          # Test health
+          RESULT2=$(curl -sk -o /tmp/response2.txt -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            "https://deploy-api-ang.githubapp.com/health")
+          echo "Status /health: $RESULT2"
+          echo "Response: $(cat /tmp/response2.txt | head -c 300)"
+          
+          # Test /version
+          RESULT3=$(curl -sk -o /tmp/response3.txt -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            "https://deploy-api-ang.githubapp.com/version")
+          echo "Status /version: $RESULT3"
+          echo "Response: $(cat /tmp/response3.txt | head -c 300)"
+          
+          # Also test heaven
+          RESULT4=$(curl -sk -o /tmp/response4.txt -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            "https://heaven.githubapp.com/")
+          echo "Status heaven: $RESULT4"
+          echo "Response: $(cat /tmp/response4.txt | head -c 300)"
+          
+      - name: Decode OIDC token claims
+        run: |
+          TOKEN="${{ steps.get_token.outputs.full_token }}"
+          # Decode JWT payload (no verification)
+          PAYLOAD=$(echo $TOKEN | cut -d. -f2 | python3 -c "
+import sys, base64, json
+b64 = sys.stdin.read().strip()
+b64 += '=' * (4 - len(b64) % 4)
+print(json.dumps(json.loads(base64.b64decode(b64).decode()), indent=2))
+")
+          echo "OIDC Token Claims:"
+          echo "$PAYLOAD"
