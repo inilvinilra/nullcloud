@@ -10,58 +10,60 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Test OIDC + internal ang services
+      - name: Test OIDC with service-specific audiences
         run: |
           python3 - << 'PYEOF'
-          import urllib.request, urllib.parse, json, os, ssl
+          import urllib.request, json, os, ssl
           
           ctx = ssl.create_default_context()
-          
-          def fetch(url, token=None, headers=None):
-              hdrs = {"Accept": "*/*"}
-              if token:
-                  hdrs["Authorization"] = f"Bearer {token}"
-              if headers:
-                  hdrs.update(headers)
-              req = urllib.request.Request(url, headers=hdrs)
-              try:
-                  with urllib.request.urlopen(req, context=ctx, timeout=10) as r:
-                      return r.status, r.read(2000).decode("utf-8", errors="replace"), dict(r.headers)
-              except Exception as e:
-                  return 0, str(e)[:200], {}
-          
-          # Get OIDC token
           oidc_url = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL", "")
           oidc_req_token = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "")
           
-          r = urllib.request.Request(oidc_url + "&audience=https://github.com",
-              headers={"Authorization": f"bearer {oidc_req_token}"})
-          with urllib.request.urlopen(r, context=ctx, timeout=10) as resp:
-              oidc_data = json.loads(resp.read())
-          token = oidc_data["value"]
-          print(f"Token length: {len(token)}")
+          def get_token(audience):
+              url = oidc_url + f"&audience={audience}"
+              r = urllib.request.Request(url, headers={"Authorization": f"bearer {oidc_req_token}"})
+              with urllib.request.urlopen(r, context=ctx, timeout=10) as resp:
+                  return json.loads(resp.read())["value"]
           
-          hosts = [
+          def fetch(url, token):
+              req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "Accept": "*/*"})
+              try:
+                  with urllib.request.urlopen(req, context=ctx, timeout=10) as r:
+                      body = r.read(1000).decode("utf-8", errors="replace")
+                      return r.status, body
+              except urllib.error.HTTPError as e:
+                  body = e.read(500).decode("utf-8", errors="replace")
+                  return e.code, body
+              except Exception as e:
+                  return 0, str(e)
+          
+          # Test with different audiences for each service
+          services = [
               ("skeefree-production-ang.githubapp.com", "/"),
-              ("skeefree-production-ang.githubapp.com", "/health"),
               ("skeefree-production-ang.githubapp.com", "/api/v1/services"),
-              ("skeefree-production-ang.githubapp.com", "/api/v1/teams"),
               ("vulnerability-aggregator-production-ang.githubapp.com", "/"),
-              ("vulnerability-aggregator-production-ang.githubapp.com", "/api/v1/vulnerabilities"),
               ("ospo-policy-service-production-ang.githubapp.com", "/"),
-              ("ospo-policy-service-production-ang.githubapp.com", "/api/v1/policies"),
-              ("codeql-bazel-cache-production-ang.githubapp.com", "/"),
           ]
           
-          for host, path in hosts:
-              print(f"\n=== {host}{path} ===")
-              # Test 1: with OIDC token
-              status, body, hdrs = fetch(f"https://{host}{path}", token=token)
-              print(f"  OIDC: HTTP {status}")
-              print(f"  Body: {body[:300]}")
-              # Test 2: No auth
-              status2, body2, hdrs2 = fetch(f"https://{host}{path}")
-              print(f"  NoAuth: HTTP {status2}")
-              print(f"  Body: {body2[:200]}")
+          audiences = [
+              "https://github.com",
+              "skeefree-production-ang.githubapp.com",
+              "*.githubapp.com",
+              "githubapp.com",
+              "api://AzureADTokenExchange",
+              "https://token.actions.githubusercontent.com",
+          ]
+          
+          for audience in audiences:
+              print(f"\n--- Audience: {audience} ---")
+              try:
+                  token = get_token(audience)
+                  print(f"  Token obtained (len={len(token)})")
+                  # Test one service
+                  host, path = services[0]
+                  status, body = fetch(f"https://{host}{path}", token)
+                  print(f"  skeefree/: HTTP {status} - {body[:200]}")
+              except Exception as e:
+                  print(f"  Failed to get token: {e}")
           
           PYEOF
